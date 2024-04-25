@@ -1,0 +1,198 @@
+---
+title: "Week 3 Project - NYPD Shooting Incident Data (Historic)"
+author: "Oliviu Lazar"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+# Import libraries
+Import necessary libraries
+```{r setup, echo = TRUE, message=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+# Data Description
+The NYPD Shooting Incident Data data set offers comprehensive details on shooting incidents in New York City, encompassing dates, times, locations, perpetrator and victim demographics, and other pertinent information. We'll import and analyze this data set to glean insights into citywide shooting incidents. The data set spans every shooting incident in NYC from 2006 to the end of 2022. It undergoes manual extraction quarterly and is vetted by the Office of Management Analysis and Planning before publication on the NYPD website. Each record represents a shooting incident in NYC, providing event specifics, occurrence details, and demographics of suspects and victims. This data serves as a valuable resource for public exploration of shooting and criminal activities.
+
+# Importing the Dataset
+Read the CSV file from the URL and store it in a data frame.
+
+```{r import_data, echo = TRUE}
+
+url_nypd <- 
+  "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+nypd_raw_data <- read_csv(url_nypd)
+```
+
+# Clean the raw data
+Before conducting the analysis, the data set undergoes cleaning to standardize column names, convert data types (e.g., dates to DATE), handle missing values, and resolve inconsistencies.
+
+```{r clean_raw_data, echo = TRUE}
+
+nypd_clean_data <- nypd_raw_data %>%
+  select(c(
+    "DATE" = "OCCUR_DATE",
+    "TIME" = "OCCUR_TIME",
+    "BOROUGH" = "BORO",
+    "PRECINCT",
+    "MURDER_FLAG" = "STATISTICAL_MURDER_FLAG",
+    "PERP_AGE_GROUP",
+    "PERP_SEX",
+    "PERP_RACE",
+    "VIC_AGE_GROUP",
+    "VIC_SEX",
+    "VIC_RACE"
+  )) %>%
+  mutate(
+    DATE = mdy(DATE),
+    PRECINCT = as.integer(PRECINCT),
+    YEAR = year(DATE),
+    MURDER_FLAG = as.integer(MURDER_FLAG)
+  )
+
+head(nypd_clean_data)
+
+```
+
+# Summary statistics of the dataset
+Compute summary statistics for each variable (column) in the data frame and display the count of missing values for each column. Missing values will be addressed individually for subsequent analyses and visualizations.
+
+```{r summary_stats, echo = TRUE}
+
+summary(nypd_clean_data)
+
+missing_counts <- colSums(is.na(nypd_clean_data))
+missing_counts
+```
+
+
+# Analysis and Visualizations
+
+## Murders by year
+We calculate the total number of murders reported by the NYPD for each year using the nypd_clean_data data set. The data is grouped by year, and the sum of murders is calculated using the summarize() function. Subsequently, the first few rows of the resulting data set named murders_by_year are displayed using the head() function. Since there is no missing data in the columns needed for this analysis, we utilize the entire data set.
+
+The results are visualized in a line plot to illustrate the trend of the total number of murders by year.
+
+```{r grouped_data, echo = TRUE}
+
+murders_by_year <- nypd_clean_data %>%
+  group_by(YEAR) %>%
+  summarize(Murders = sum(MURDER_FLAG))
+
+head(murders_by_year)
+
+ggplot(murders_by_year, aes(x = YEAR, y = Murders)) +
+  geom_line(color = "blue") +  # Use geom_line for line graph
+  labs(title = "NYPD Murders by Year",
+       x = "Year",
+       y = "Number of Murders") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The results indicate a downward trend from 2006 until 2019, followed by an increase since 2019. This analysis lays the groundwork for comprehending long-term trends, pinpointing areas of concern, and guiding strategic interventions to tackle public safety challenges.
+
+### Regression Modeling of murders by year
+Fit and visualize the relationship between the time and the number of murders.
+
+```{r modeling, echo = TRUE}
+
+model <- lm(Murders ~ YEAR, data = murders_by_year)
+
+summary(model)
+
+ggplot(murders_by_year, aes(x = YEAR, y = Murders)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Regression Model of NYPD Murders by Year",
+       x = "Year",
+       y = "Number of Murders") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+We can refine and enhance the linear regression model by exploring options such as feature engineering and/or polynomial regression. These approaches aim to better capture the underlying relationships in the data and improve the model's predictive performance.
+
+## Race-on-race Shootings
+Performing a race-on-race shootings analysis necessitates the removal of missing and unknown race rows from the shooting data to uphold data integrity and ensure accurate analysis. Rows lacking race information can compromise data set reliability, leading to biased or misleading results. Including such rows in analysis may distort statistical measures and obscure patterns or trends in race-related shooting incidents. Removal of these rows enhances the accuracy of statistical analyses and visualizations, elevating the overall data set quality. This ensures that insights or conclusions drawn from the data are grounded in complete and reliable information, fostering more robust and trustworthy findings.
+
+
+```{r chart_visualizations, echo = TRUE}
+
+nypd_clean_data <- nypd_clean_data %>% 
+  filter(PERP_RACE != 'U' &
+           VIC_RACE != 'U' &
+           PERP_RACE != '(null)' &
+           VIC_RACE != '(null)' &
+           PERP_RACE != 'UNKNOWN' &
+           VIC_RACE != 'UNKNOWN')
+
+nypd_clean_data$PERP_RACE <-
+  replace(nypd_clean_data$PERP_RACE, 
+          nypd_clean_data$PERP_RACE == "AMERICAN INDIAN/ALASKAN NATIVE", "NATIVE")
+nypd_clean_data$PERP_RACE <-
+  replace(nypd_clean_data$PERP_RACE, 
+          nypd_clean_data$PERP_RACE == "ASIAN / PACIFIC ISLANDER", "ASIAN")
+nypd_clean_data$VIC_RACE <-
+  replace(nypd_clean_data$VIC_RACE, 
+          nypd_clean_data$VIC_RACE == "AMERICAN INDIAN/ALASKAN NATIVE", "NATIVE")
+nypd_clean_data$VIC_RACE <-
+  replace(nypd_clean_data$VIC_RACE, 
+          nypd_clean_data$VIC_RACE == "ASIAN / PACIFIC ISLANDER", "ASIAN")
+
+ggplot(nypd_clean_data, aes(x = PERP_RACE, fill = VIC_RACE)) +
+  geom_bar() +
+  labs(title = "Race-on-Race Shootings",
+       x = "Perpetrator Race",
+       y = "Number of Incidents",
+       fill = "Victim Race") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set3")  # Using a different color for each victim race
+
+```
+The analysis highlights disparities and patterns in the occurrence of shootings between individuals of the same race (in particular BLACK on BLACK shootings). Factors such as socioeconomic status, community dynamics, and historical context likely play significant roles in shaping these patterns. Furthermore, the analysis underscores the importance of addressing systemic issues such as racism, inequality, and access to resources to mitigate the prevalence of shootings within racial groups.
+
+
+# Sources of Bias
+
+When performing the analysis above, we must consider any potential sources of bias such as:
+
+#### Underreporting:
+Not all shooting incidents may be reported, leading to an underestimation of the true number of shootings and biased datasets.
+
+#### Selection Bias:
+The data set may not represent all demographics or areas equally, skewing conclusions about the prevalence or distribution of shootings.
+
+#### Sampling Bias:
+Non-random sampling methods or incomplete data collection can bias analyses by excluding certain incidents or time periods.
+
+#### Data Collection Methods:
+Inaccurate or incomplete reporting methods can introduce biases, especially in demographic information like race.
+
+#### Data Quality Issues:
+Inaccuracies, inconsistencies, or missing data can bias analyses and affect conclusions.
+
+#### Contextual Factors:
+Social, economic, and political factors can influence both the occurrence of shootings and the recording of data, leading to bias.
+
+#### Personal Bias:
+In conducting the analysis, I must be aware of personal biases which can stem from various factors such as personal experiences, cultural background, upbringing, education, social environment, among others.
+
+Awareness of these biases and rigorous evaluation of data set limitations are crucial for interpreting results accurately in analyses of NYPD shooting data
+
+
+# Conclusion
+
+The analysis of murders by year and race-on-race shootings provides valuable insights into the dynamics of violent crime and racial disparities in New York City.
+
+Regarding murders by year, the data reveals fluctuations in homicide rates over time, with periods of decline followed by recent increases. This analysis underscores the importance of ongoing monitoring and proactive measures to address emerging trends and mitigate the impact of violent crime on communities.
+
+Similarly, the race-on-race shootings analysis sheds light on disparities in the prevalence of shootings within racial groups. By examining patterns of shootings between individuals of the same race, this analysis highlights the complex interplay of socioeconomic factors, community dynamics, and systemic inequalities.
